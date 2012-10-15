@@ -8,31 +8,42 @@ if (!window.mirokado) window.mirokado = {};
 		       mw.loader.load(path);
 		    });
   };
-  var deferred;
+  var deferred = $.Deferred(); // we don't get a fail if the crossDomain request fails
   if (window.mirokado.doactions) {
     // do things locally without trying to call getscript
     // always fails, fail does things locally
     window.mirokado.local = true;
-    deferred = $.Deferred().reject(deferred, '', 'doactions'); // dummy arguments
+    deferred.reject(deferred, '', 'doactions'); // dummy arguments
   }
   else {
     // console.log('1. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
     // try to call localhost, success will have done action directly locally, fail does things remotely
     window.mirokado.doactions = true;
-    deferred = $.getScript('//localhost/wp/Wikimedia-Mirokado/common.js');
+    // using ajax because getScript does not fail for a crossDomain request, need async and timeout for error
+    $.ajax({
+          url: '//localhost/wp/Wikimedia-Mirokado/common.js',
+	  dataType: 'script',
+	  async: true,
+	  crossDomain: true, 
+	  timeout: 1000,
+	  error: function() {
+	    console.log("deferred ajax error: page not found");
+	    deferred.reject(deferred, '', 'doactions');
+          }
+    });
   }
   // console.log('0, actions direct');
   deferred.fail(function(jqxhr, settings, exception) {
     if (window.mirokado.local) {
-      // console.log('3. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
+      console.log('3. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
       window.mirokado.templatescript_url = '//localhost/wp/Wikimedia-contrib/pathoschild.templatescript.js';
-      window.mirokado.watchlistDeliveryStamp_url = '//localhost/wp/Wikimedia-Mirokado/WatchlistDeliveryStamp.js';
+      window.mirokado.watchlistDeliverystamp_url = '//localhost/wp/Wikimedia-Mirokado/WatchlistDeliverystamp.js';
       // debugging
       window.watchlistDeliveredLog = true;
     } else {
-      // console.log('4. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
+      console.log('4. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
       window.mirokado.templatescript_url = '//meta.wikimedia.org/w/index.php?title=User:Pathoschild/Scripts/TemplateScript/dev.js&action=raw&ctype=text/javascript';
-      window.mirokado.watchlistDeliveryStamp_url = '//meta.wikimedia.org/w/index.php?title=User:Mirokado/WatchlistDeliveryStamp.js&action=raw&ctype=text/javascript';
+      window.mirokado.watchlistDeliverystamp_url = '//meta.wikimedia.org/w/index.php?title=User:Mirokado/WatchlistDeliverystamp.js&action=raw&ctype=text/javascript';
     }
     window.mirokado.loaded = true;
     popupFixDabs = true;
@@ -43,42 +54,49 @@ if (!window.mirokado) window.mirokado = {};
     if (pagename == 'Special:Watchlist') {
       // things only for the watchlist, load that a lot so trim down what it needs
       // window.watchlistLatestDeliveredClass = 'whatever';
-      $.getScript(window.mirokado.watchlistDeliveryStamp_url);
+      //$.getScript(window.mirokado.watchlistDeliverystamp_url);
+      window.mirokado.loadit(window.mirokado.watchlistDeliverystamp_url);
       // importScript('User:Equazcion/ReverseMarked.js');
       // $.getScript('//en.wikipedia.org/w/index.php?title=User:Equazcion/ReverseMarked.js&action=raw&ctype=text/javascript');
       window.mirokado.loadit('//en.wikipedia.org/w/index.php?title=User:Equazcion/ReverseMarked.js&action=raw&ctype=text/javascript');
-      // console.log('5, returning. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
+      console.log('5, returning. wmloaded '+ (window.mirokado.loaded || 'false')+ ' wmlocal '+ (window.mirokado.local || 'false') );
       return;
     }
     //
     // we might need to load something from Pathoschild earlier if we need anything for the watchlist
-    //********
+    //
     // ** TemplateScript: http://meta.wikimedia.org/wiki/User:Pathoschild/Scripts/TemplateScript
-    //********
+    //
     //<pre> retain pre in case template defs in strings...
     // console.log('6, calling pts '+ window.mirokado.templatescript_url);
-    $.getScript(window.mirokado.templatescript_url)
-      .done(function() { pathoschild.TemplateScript.Add([
-          {
-	    name: 'horror',
-	    forActions: 'edit',                         // or array of string
-	    forNamespaces: 0,                           // or array of int
-	    script: function(context) {
-	      var xx = context.$target.val();
-	      xx.replace(/^\| {{[Yy]ear *header}} \| '''\[\[(\d\d\d\d) in film\|\1\]\]'''/mg, '! {{year header}} | [[$1 in film|$1]]');
-	      // xx.replace(xxxxx, 'yyyyy');
-	      // xx.replace(xxxxx, 'yyyyy');
-	      // xx.replace(xxxxx, 'yyyyy');
-	      // xx.replace(xxxxx, 'yyyyy');
-	      context.$target.val(xx);
-	      xx = context.$editSummary.val();
-	      if (xx) xx = xx+ '; ';
-	      context.$editSummary.val(xx+ 'update table for [[WP:ACCESSIBILITY]], [[WP:MOS]]');
-            }
+    var ts = $.getScript(window.mirokado.templatescript_url);
+    ts.done(function() { pathoschild.TemplateScript.Add([
+        {
+	  name: 'horror',
+	  forActions: 'edit',                         // or array of string
+	  forNamespaces: 0,                           // or array of int
+	  script: function(context) {
+	    var xx = context.$target.val();
+	    xx.replace(/^\| {{[Yy]ear *header}} \| '''\[\[(\d\d\d\d) in film\|\1\]\]'''/mg, '! {{year header}} | [[$1 in film|$1]]');
+	    // xx.replace(xxxxx, 'yyyyy');
+	    // xx.replace(xxxxx, 'yyyyy');
+	    // xx.replace(xxxxx, 'yyyyy');
+	    // xx.replace(xxxxx, 'yyyyy');
+	    context.$target.val(xx);
+	    xx = context.$editSummary.val();
+	    if (xx) xx = xx+ '; ';
+	    context.$editSummary.val(xx+ 'update table for [[WP:ACCESSIBILITY]], [[WP:MOS]]');
           }
-	]); // Add
-      }); // done
+        }
+      ]); // Add
+    }); // done
     //</pre>
+    // only when editing
+    // depend on an old Pathoschild framework
+    importScript('User:Ohconfucius/script/MOSNUM dates.js');     // [[User:Ohconfucius/script/MOSNUM dates.js]]
+    //importScript('User:Ohconfucius/script/formatgeneral.js');  // [[User:Ohconfucius/script/formatgeneral.js]]
+    //importScript('User:Ohconfucius/script/EngvarB.js');        // [[User:Ohconfucius/script/EngvarB.js]]
+    //importScript('User:Ohconfucius/script/Common Terms.js');   // [[User:Ohconfucius/script/Common Terms.js]]
     //
     // non-local things
     // console.log('8, beginning of non-local things');
@@ -102,32 +120,44 @@ if (!window.mirokado) window.mirokado = {};
     // see Wikipedia:HotCat#Easy_categorizing_to_child_or_parent_categories
     var hotcat_use_category_links = true;
 
-    // Add WP:Reflinks launcher in the toolbox on left, this *must* start an edit
-    addOnloadHook(function () {
-		    addPortletLink("p-tb",     // toolbox portlet
-				   "http://toolserver.org/~dispenser/cgi-bin/webreflinks.py/" + wgPageName
-				   + "?client=script&citeweb=on&overwrite=&limit=20&lang=" + wgContentLanguage,
-				   "Reflinks"  // link label
-				   )});
-
-    // only when editing
-    importScript('User:Ohconfucius/script/MOSNUM dates.js');   // [[User:Ohconfucius/script/MOSNUM dates.js]]
-    //importScript('User:Ohconfucius/script/formatgeneral.js');  // [[User:Ohconfucius/script/formatgeneral.js]]
-    //importScript('User:Ohconfucius/script/EngvarB.js');        // [[User:Ohconfucius/script/EngvarB.js]]
-    //importScript('User:Ohconfucius/script/Common Terms.js');   // [[User:Ohconfucius/script/Common Terms.js]]
-
+    var namespaceNo = mw.config.get('wgNamespaceNumber');
+    console.log('namespaceNo '+ namespaceNo+ ' & 1 = '+ (namespaceNo & 1)+ ' action '+ mw.config.get('wgAction'));
+    console.log('local storage '+ (window.localStorage || 'no'));
+    //
+    if ((namespaceNo & 1) == 0) {                                 // not a talk page
+      // see also User talk:GregU/hotkeys.js, but that only manages ctrl keys...
+      // User:GregU/dashes, this can start an edit
+      console.log('loading dashes.js');
+      importScript("User:GregU/dashes.js");
+      if (mw.config.get('wgAction') == 'edit') {                  // editing
+	// style advice
+	console.log('loading Advisor.js');
+	importScript('User:Cameltrader/Advisor.js');              // only while editing
+      }
+      else if (namespaceNo == 0 && mw.config.get('wgIsArticle')) {
+	// Add WP:Reflinks launcher in the toolbox on left, this *must* start an edit
+	console.log('loading Reflinks');
+	addOnloadHook(function () {
+			addPortletLink("p-tb",     // toolbox portlet
+				       "http://toolserver.org/~dispenser/cgi-bin/webreflinks.py/"+ pagename+
+				       "?client=script&citeweb=on&overwrite=&limit=20&lang="+ mw.config.get('wgContentLanguage'),
+				       "Reflinks"  // link label
+				       )});
+      }
+    }
     // anything below is for editable pages (and diff pages)
     // arr, but this is false for an edit page!
     // need to distinguish between scripts which can initiate an edit and those which work on an edit page...
     //if (!mw.config.get('wgIsArticle')) return;
     //
-    if (mw.config.get('wgNamespaceNumber') == 0) {
+    if (namespaceNo == 0) {
       // view and edit persondata
       importScript('User:Dr pda/persondata.js');
       importScript('User:Ucucha/HarvErrors.js');
     }
-    // style advice
-    importScript('User:Cameltrader/Advisor.js'); // only while editing
+    else if (namespaceNo == 4 && /:(?:Featured|Valued)/.test(pagename)) {
+      importScript('User:Gary King/nominations viewer.js');
+    }
     //
     //// Citation bot Wikipedia:UCB
     // importScript('User:Smith609/toolbox.js');
@@ -157,19 +187,15 @@ if (!window.mirokado) window.mirokado = {};
     //// Wikipedia:Script Installer
 
     // [[Wikipedia:User script sandbox/Installation]]
-    mw.loader.load( "//en.wikipedia.org/w/index.php?title=User:PleaseStand/userScriptSandbox.js&action=raw&ctype=text/javascript" );
+    if (window.localStorage) {
+      mw.loader.load( "//en.wikipedia.org/w/index.php?title=User:PleaseStand/userScriptSandbox.js&action=raw&ctype=text/javascript" );
+    }
 
     // no local storage for some reason...
     // importScript('User:UncleDouggie/smart watchlist.js');   // [[User:UncleDouggie/smart watchlist.js]]
 
-    // see also User talk:GregU/hotkeys.js, but that only manages ctrl keys...
-    // User:GregU/dashes, this can start an edit
-    importScript("User:GregU/dashes.js");
-
     // addrefs.js
     // importScript('User:Mirokado/addrefs.js'):
-
-    importScript('User:Gary King/nominations viewer.js');
 
     // this did not seem to work, but now fixed the missing quote...
     //importScript('User:Equazcion/ActiveWatchers.js');
